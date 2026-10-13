@@ -172,6 +172,18 @@ describe('Idempotency Utils', () => {
       expect(a).not.toBe(b);
     });
 
+    it('keys message.vote per voter and occurrence: a changed vote is new, a retry is the same', () => {
+      const data = { sessionId: 'A', messageId: 'POLL', voterId: '628111@c.us' };
+      const at = '2026-06-20T00:00:00.000Z';
+      expect(generateIdempotencyKey('message.vote', data, at)).toBe(generateIdempotencyKey('message.vote', data, at));
+      expect(generateIdempotencyKey('message.vote', data, at)).not.toBe(
+        generateIdempotencyKey('message.vote', data, '2026-06-20T00:01:00.000Z'),
+      );
+      expect(generateIdempotencyKey('message.vote', data, at)).not.toBe(
+        generateIdempotencyKey('message.vote', { ...data, voterId: '628222@c.us' }, at),
+      );
+    });
+
     it('is retry-stable for message.reaction: the same occurrence regenerates the same key', () => {
       const at = '2026-06-20T00:00:00.000Z';
       const data = { sessionId: 'A', messageId: 'MSG1', senderId: '628111@c.us', reaction: '👍' };

@@ -4,8 +4,9 @@ import {
   type RevokedMessage,
   type ReactionEvent,
   type EditedMessage,
+  type PollVoteEvent,
 } from '../interfaces/whatsapp-engine.interface';
-import { type SerializedWid } from '../types/whatsapp-web-js.types';
+import { readWid, type SerializedWid } from '../types/whatsapp-web-js.types';
 import { buildEditedMessage, buildIncomingMessageBase, mapContactFields } from './message-mapper';
 import { extractWwebjsCall, wwebjsAckToDeliveryStatus } from './wwebjs-messaging';
 import { type WwebjsEngineHost } from './wwebjs-host';
@@ -197,6 +198,31 @@ export function registerWwebjsMessageEvents(client: Client, host: WwebjsEngineHo
       host.getCallbacks().onMessageReaction?.(event);
     } catch (error) {
       host.logger.error('Error processing message_reaction', String(error));
+    }
+  });
+
+  client.on('vote_update', vote => {
+    try {
+      // `parentMsgKey` is assigned straight through from the page (the Reaction pattern above), so
+      // read it with `readWid` for the `$1` rename (#747). `parentMessage` is always constructed but
+      // is empty when the poll is no longer in the local store, hence the key comes first.
+      const key = (vote as unknown as { parentMsgKey?: SerializedWid & { remote?: SerializedWid | string } })
+        .parentMsgKey;
+      const parent = vote.parentMessage as unknown as
+        { id?: SerializedWid; fromMe?: boolean; from?: string; to?: string } | undefined;
+      const event: PollVoteEvent = {
+        messageId: readWid(key) ?? readWid(parent?.id) ?? '',
+        chatId: readWid(key?.remote) ?? (parent?.fromMe ? parent?.to : parent?.from) ?? '',
+        voterId: vote.voter,
+        selectedOptions: (vote.selectedOptions ?? []).map(option => {
+          const { localId, name } = option as unknown as { localId: number; name?: string };
+          return name === undefined ? { localId } : { localId, name };
+        }),
+        timestamp: vote.interractedAtTs,
+      };
+      host.getCallbacks().onPollVote?.(event);
+    } catch (error) {
+      host.logger.error('Error processing vote_update', String(error));
     }
   });
 

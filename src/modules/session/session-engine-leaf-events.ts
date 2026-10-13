@@ -5,7 +5,7 @@ import { EventsGateway } from '../events/events.gateway';
 import { WebhookService } from '../webhook/webhook.service';
 import { DEFAULT_MEDIA_MAX_BYTES, STATUS_TTL_MS, StatusStoreService } from '../status-store/status-store.service';
 import { buildIncomingStatus } from '../status-store/incoming-status';
-import { GroupEvent, IWhatsAppEngine } from '../../engine/interfaces/whatsapp-engine.interface';
+import { GroupEvent, IWhatsAppEngine, PollVoteEvent } from '../../engine/interfaces/whatsapp-engine.interface';
 import { type createLogger } from '../../common/services/logger.service';
 
 // How many recent status-broadcast messages the connect-time seed pulls (each with its media).
@@ -165,6 +165,24 @@ export class SessionEngineLeafEvents {
         void this.webhookService.dispatch(id, 'group.join_request', payload);
         break;
     }
+  }
+
+  /**
+   * Fan a poll vote out to the WebSocket room and the `message.vote` webhook. Like group events
+   * there is nothing to persist first: the tally lives in the engine. `isGroup` is carried so the
+   * webhook `isGroup` filter works on votes the same way it does on messages.
+   */
+  dispatchPollVote(id: string, event: PollVoteEvent): void {
+    const payload: Record<string, unknown> = {
+      messageId: event.messageId,
+      chatId: event.chatId,
+      isGroup: event.chatId.endsWith('@g.us'),
+      voterId: event.voterId,
+      selectedOptions: event.selectedOptions,
+      timestamp: event.timestamp,
+    };
+    this.eventsGateway.emitMessageVote(id, payload);
+    void this.webhookService.dispatch(id, 'message.vote', payload);
   }
 
   /**

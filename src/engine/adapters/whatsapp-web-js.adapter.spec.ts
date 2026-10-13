@@ -3845,6 +3845,82 @@ describe('WhatsAppWebJsAdapter message_reaction (id resolution across WA Web bui
   });
 });
 
+describe('WhatsAppWebJsAdapter vote_update (poll votes)', () => {
+  const wireVoteHandler = (): { onPollVote: jest.Mock; client: EventEmitter } => {
+    const adapter = new WhatsAppWebJsAdapter({
+      sessionId: 'sess-vote-test',
+      sessionDataPath: './data/sessions',
+      puppeteer: {},
+    });
+    const client = Object.assign(new EventEmitter(), {
+      info: { wid: { _serialized: 'me@c.us', user: '628123' }, pushname: 'Tester' },
+      getState: jest.fn().mockResolvedValue(WAState.CONNECTED),
+      pupPage: { evaluate: jest.fn().mockResolvedValue(true) },
+    });
+    (adapter as unknown as { client: unknown }).client = client;
+    const onPollVote = jest.fn();
+    (adapter as unknown as { callbacks: unknown }).callbacks = { onPollVote };
+    (adapter as unknown as { setupEventHandlers: () => void }).setupEventHandlers();
+    return { onPollVote, client };
+  };
+
+  const voteArg = (mock: jest.Mock): Record<string, unknown> =>
+    (mock.mock.calls as Array<[Record<string, unknown>]>)[0][0];
+
+  it('maps the poll id, chat, voter and the whole current selection', () => {
+    const { onPollVote, client } = wireVoteHandler();
+
+    client.emit('vote_update', {
+      voter: '5511911111111@c.us',
+      selectedOptions: [{ localId: 1, name: '🙋 Quero 2' }],
+      interractedAtTs: 1760000000000,
+      parentMessage: { id: { _serialized: 'true_group@g.us_POLL' }, fromMe: true, to: 'group@g.us' },
+      parentMsgKey: { _serialized: 'true_group@g.us_POLL', remote: { _serialized: 'group@g.us' } },
+    });
+
+    expect(voteArg(onPollVote)).toEqual({
+      messageId: 'true_group@g.us_POLL',
+      chatId: 'group@g.us',
+      voterId: '5511911111111@c.us',
+      selectedOptions: [{ localId: 1, name: '🙋 Quero 2' }],
+      timestamp: 1760000000000,
+    });
+  });
+
+  it('keeps the vote when the poll is gone from the store (no option names, $1 ids, chat from the parent)', () => {
+    const { onPollVote, client } = wireVoteHandler();
+
+    client.emit('vote_update', {
+      voter: '123@lid',
+      selectedOptions: [{ localId: 0, name: undefined }],
+      interractedAtTs: 1,
+      parentMessage: { fromMe: true, to: 'group@g.us' },
+      parentMsgKey: { $1: 'POLL_RENAMED' },
+    });
+
+    expect(voteArg(onPollVote)).toMatchObject({
+      messageId: 'POLL_RENAMED',
+      chatId: 'group@g.us',
+      selectedOptions: [{ localId: 0 }],
+    });
+    expect((voteArg(onPollVote).selectedOptions as object[])[0]).not.toHaveProperty('name');
+  });
+
+  it('forwards a cleared vote as an empty selection', () => {
+    const { onPollVote, client } = wireVoteHandler();
+
+    client.emit('vote_update', {
+      voter: 'peer@c.us',
+      selectedOptions: [],
+      interractedAtTs: 2,
+      parentMessage: {},
+      parentMsgKey: { _serialized: 'POLL', remote: 'peer@c.us' },
+    });
+
+    expect(voteArg(onPollVote)).toMatchObject({ messageId: 'POLL', chatId: 'peer@c.us', selectedOptions: [] });
+  });
+});
+
 describe('WhatsAppWebJsAdapter message_revoke_everyone (forwards the original deleted id as revokedId)', () => {
   const wireRevokeHandler = (): { onMessageRevoked: jest.Mock; client: EventEmitter } => {
     const adapter = new WhatsAppWebJsAdapter({

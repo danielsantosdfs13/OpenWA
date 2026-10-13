@@ -648,6 +648,29 @@ export interface ReactionEvent {
   senderId: string;
 }
 
+/** One option of a poll as the voter left it selected. */
+export interface PollVoteOption {
+  /** The option's position-stable local id inside the poll (0-based on whatsapp-web.js). */
+  localId: number;
+  /** The option text; absent when the engine no longer holds the poll message to look it up. */
+  name?: string;
+}
+
+/**
+ * A poll vote, mapped at the adapter boundary. A vote carries the voter's WHOLE current selection,
+ * not a delta: changing a vote re-sends the full set, and an empty `selectedOptions` means the
+ * voter cleared every option.
+ */
+export interface PollVoteEvent {
+  /** Id of the poll creation message. */
+  messageId: string;
+  chatId: string;
+  voterId: string;
+  selectedOptions: PollVoteOption[];
+  /** When the voter (de)selected, in milliseconds since the epoch. */
+  timestamp: number;
+}
+
 /**
  * A group membership or metadata change, mapped at the adapter boundary to this neutral
  * shape so consumers never see engine-specific payloads:
@@ -802,6 +825,8 @@ export interface EngineEventCallbacks {
   onMessageAck?: (messageId: string, status: DeliveryStatus) => void;
   onMessageRevoked?: (message: RevokedMessage) => void;
   onMessageReaction?: (event: ReactionEvent) => void;
+  /** Fired when someone votes on (or changes their vote in) a poll. whatsapp-web.js only. */
+  onPollVote?: (event: PollVoteEvent) => void;
   onMessageEdited?: (message: EditedMessage) => void;
   /**
    * Fired on group membership changes (join/leave), group metadata updates
